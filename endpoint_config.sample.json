@@ -1,0 +1,19 @@
+{
+  "address": "hostname.com:1234",
+  "targets": {
+    "sample_key_1": {
+      "devices": [
+        {
+          "mac": "aa.ff.bb.bb.ff.aa"
+        }
+      ]
+    },
+    "sample_key_2":{
+      "devices": [
+        {
+          "mac": "ff.cc.dd.dd.cc.ff"
+        }
+      ]
+    }
+  }
+}
