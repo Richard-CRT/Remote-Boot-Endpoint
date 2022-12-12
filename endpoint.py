@@ -44,7 +44,7 @@ def boot(key):
 async def main():
     config = get_config_dict()
     uri = f"wss://{config['address']}/?tgt=remote_boot"
-    print(f"Connecting...")
+    print(f"Connecting to {uri}...")
     async for websocket in websockets.connect(uri):
         try:
             config_json = get_config_dict()
