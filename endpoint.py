@@ -8,7 +8,7 @@ import wakeonlan
 def get_config_dict():
     print("Loading config file...")
     filename = "endpoint_config.json"
-    config_json = {"targets": {}}
+    config_json = {"address": "", "targets": {}}
 
     try:
         with open(filename, 'r') as f:
