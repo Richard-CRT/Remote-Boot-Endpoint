@@ -3,7 +3,22 @@ import json
 import sys
 import websockets
 import wakeonlan
+from ping3 import ping
 
+class Device():
+    def __init__(self, name, mac, ip):
+        self.Name = name;
+        self.Mac = mac
+        self.IP = ip
+        self.PingDelay = None
+    
+    def boot(self):
+        print(f"Sending magic packet to: {self.Mac}")
+        wakeonlan.send_magic_packet(self.Mac)
+    
+    def ping(self):
+        if self.IP is not None:
+            self.PingDelay = ping(self.IP, timeout=0.5)
 
 def get_config_dict():
     print("Loading config file...")
@@ -21,29 +36,47 @@ def get_config_dict():
         with open(filename, 'r') as f:
             config_json = json.load(f)
     except json.decoder.JSONDecodeError as e:
-        print(f"Error decoding config.json file - invalid JSON")
+        print(f"Error decoding `{filename}` file - invalid JSON")
     except Exception as err:
-        print(f"Error {type(err).__name__} while reading config.json file")
+        print(f"Error {type(err).__name__} while reading `{filename}` file")
         print(err)
 
     return config_json
 
 
-def boot(key):
+def boot(device):
     print("-- Running boot procedure --")
-    config_json = get_config_dict()
-    if "targets" in config_json:
-        if key in config_json["targets"]:
-            for target_device in config_json["targets"][key]["devices"]:
-                print(f"Sending magic packet to: {target_device['mac']}")
-                wakeonlan.send_magic_packet(target_device['mac'])
-    else:
-        print("Didn't find required parameter 'targets' in config json")
+    device.boot()
 
+Devices = []
+DeviceByMac = {}
+DeviceByKey = {}
+    
+async def ping_loop():
+    global Devices
+    
+    while True:
+        for device in Devices:
+            device.ping()
+        await asyncio.sleep(10)
 
 async def main():
-    config = get_config_dict()
-    uri = f"wss://{config['address']}/?tgt=remote_boot"
+    global DeviceByMac
+    global DeviceByKey
+    
+    config_json = get_config_dict()
+    uri = f"wss://{config_json['address']}:{config_json['port']}/?tgt=remote_boot"
+    
+    for target_key, target in config_json["targets"].items():
+        if target["mac"] not in DeviceByMac:
+            newDevice = Device(target["name"], target["mac"], target["ip"])
+            Devices.append(newDevice)
+            DeviceByMac[target["mac"]] = newDevice
+        device = DeviceByMac[target["mac"]]
+        DeviceByKey[target_key] = device
+        
+    asyncio.create_task(ping_loop())
+    
     print(f"Connecting to {uri}...")
     async for websocket in websockets.connect(uri):
         try:
@@ -63,8 +96,16 @@ async def main():
                         if action == "boot":
                             if "key" in json_dict:
                                 key = json_dict["key"]
-                                print(f"Booting key {key}...")
-                                boot(key)
+                                if key in DeviceByKey:
+                                    print(f"Booting key {key}...")
+                                    boot(DeviceByKey[key])
+                        elif action == "request_ping":
+                            if "key" in json_dict:
+                                key = json_dict["key"]
+                                if key in DeviceByKey:
+                                    device = DeviceByKey[key]
+                                    dict_message = {"client_type": "endpoint", "key": key, "ping": device.PingDelay}
+                                    await websocket.send(json.dumps(dict_message))
         except websockets.ConnectionClosed:
             print(f"Connection closed, retrying...")
             continue
