@@ -23,7 +23,7 @@ class Device():
 def get_config_dict():
     print("Loading config file...")
     filename = "endpoint_config.json"
-    config_json = {"address": "", "targets": {}}
+    config_json = {"address": "hostname.com", "port":"1234", "targets": {}}
 
     try:
         with open(filename, 'r') as f:
