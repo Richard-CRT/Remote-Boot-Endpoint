@@ -3,6 +3,7 @@ import json
 import sys
 import websockets
 import wakeonlan
+import ssl
 from ping3 import ping
 
 class Device():
@@ -78,41 +79,46 @@ async def main():
     asyncio.create_task(ping_loop())
     
     print(f"Connecting to {uri}...")
-    async for websocket in websockets.connect(uri):
-        try:
-            config_json = get_config_dict()
-            dict_message = {"client_type": "endpoint", "keys": list(config_json["targets"].keys())}
-            print(f"Sending: {dict_message}")
-            await websocket.send(json.dumps(dict_message))
-            async for message in websocket:
-                try:
-                    json_dict = json.loads(message)
-                except json.decoder.JSONDecodeError as e:
-                    pass
-                else:
-                    print(f"Received: {json_dict}")
-                    if "action" in json_dict:
-                        action = json_dict["action"]
-                        if action == "boot":
-                            if "key" in json_dict:
-                                key = json_dict["key"]
-                                if key in DeviceByKey:
-                                    print(f"Booting key {key}...")
-                                    boot(DeviceByKey[key])
-                        elif action == "request_ping":
-                            if "key" in json_dict:
-                                key = json_dict["key"]
-                                if key in DeviceByKey:
-                                    device = DeviceByKey[key]
-                                    dict_message = {"client_type": "endpoint", "key": key, "ping": device.PingDelay}
-                                    await websocket.send(json.dumps(dict_message))
-        except websockets.ConnectionClosed:
-            print(f"Connection closed, retrying...")
-            continue
-        except Exception as err:
-            print(f"Error {type(err).__name__}")
-            print(err)
-            continue
+    try:
+        # SSLContext(...) without protocol paramter is deprecated for 3.10 onwards
+        async for websocket in websockets.connect(uri, ssl=ssl.SSLContext()):
+            try:
+                config_json = get_config_dict()
+                dict_message = {"client_type": "endpoint", "keys": list(config_json["targets"].keys())}
+                print(f"Sending: {dict_message}")
+                await websocket.send(json.dumps(dict_message))
+                async for message in websocket:
+                    try:
+                        json_dict = json.loads(message)
+                    except json.decoder.JSONDecodeError as e:
+                        pass
+                    else:
+                        print(f"Received: {json_dict}")
+                        if "action" in json_dict:
+                            action = json_dict["action"]
+                            if action == "boot":
+                                if "key" in json_dict:
+                                    key = json_dict["key"]
+                                    if key in DeviceByKey:
+                                        print(f"Booting key {key}...")
+                                        boot(DeviceByKey[key])
+                            elif action == "request_ping":
+                                if "key" in json_dict:
+                                    key = json_dict["key"]
+                                    if key in DeviceByKey:
+                                        device = DeviceByKey[key]
+                                        dict_message = {"client_type": "endpoint", "key": key, "ping": device.PingDelay}
+                                        await websocket.send(json.dumps(dict_message))
+            except websockets.ConnectionClosed:
+                print(f"Connection closed, retrying...")
+                continue
+            except Exception as err:
+                print(f"Error {type(err).__name__}")
+                print(err)
+                continue
+    except Exception as err:
+        print(f"Error {type(err).__name__}")
+        print(err)
 
 
 if __name__ == "__main__":
