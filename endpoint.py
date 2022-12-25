@@ -84,7 +84,7 @@ async def main():
         async for websocket in websockets.connect(uri, ssl=ssl.SSLContext()):
             try:
                 config_json = get_config_dict()
-                dict_message = {"client_type": "endpoint", "keys": list(config_json["targets"].keys())}
+                dict_message = {"client_type": "endpoint", "action": "register", "keys": list(config_json["targets"].keys())}
                 print(f"Sending: {dict_message}")
                 await websocket.send(json.dumps(dict_message))
                 async for message in websocket:
@@ -107,7 +107,7 @@ async def main():
                                     key = json_dict["key"]
                                     if key in DeviceByKey:
                                         device = DeviceByKey[key]
-                                        dict_message = {"client_type": "endpoint", "key": key, "ping": device.PingDelay}
+                                        dict_message = {"client_type": "endpoint", "action": "ping", "key": key, "ping": device.PingDelay}
                                         await websocket.send(json.dumps(dict_message))
             except websockets.ConnectionClosed:
                 print(f"Connection closed, retrying...")
