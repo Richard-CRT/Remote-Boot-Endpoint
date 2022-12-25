@@ -137,7 +137,7 @@ async def main():
                                     if key in DeviceByKey:
                                         device = DeviceByKey[key]
                                         if device not in PriorityPingDevices:
-                                            PriorityPingDevices.append(devices)
+                                            PriorityPingDevices.append(device)
             except websockets.ConnectionClosed:
                 print(f"Connection closed, retrying...")
                 continue
