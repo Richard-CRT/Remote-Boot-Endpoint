@@ -109,7 +109,10 @@ async def main():
             try:
                 if ping_loop_task is not None:
                     ping_loop_task.cancel()
-                    await ping_loop_task
+                    try:
+                        await ping_loop_task
+                    except asyncio.exceptions.CancelledError:
+                        pass
                 ping_loop_task = asyncio.create_task(ping_loop(websocket))
                 
                 config_json = get_config_dict()
