@@ -4,11 +4,14 @@ import sys
 import websockets
 import wakeonlan
 import ssl
+import collections
+import time
 from ping3 import ping
 
 class Device():
-    def __init__(self, name, mac, ip):
-        self.Name = name;
+    def __init__(self, key, name, mac, ip):
+        self.Key = key
+        self.Name = name
         self.Mac = mac
         self.IP = ip
         self.PingDelay = None
@@ -17,9 +20,16 @@ class Device():
         print(f"Sending magic packet to: {self.Mac}")
         wakeonlan.send_magic_packet(self.Mac)
     
-    def ping(self):
+    async def ping(self, websocket):
         if self.IP is not None:
-            self.PingDelay = ping(self.IP, timeout=0.5)
+            try:
+                self.PingDelay = ping(self.IP, timeout=0.5) * 1000
+            except TimeoutError:
+                self.PingDelay = None
+            
+            dict_message = {"client_type": "endpoint", "action": "ping", "key": self.Key, "ping": self.PingDelay}
+            print(f"Sending: {dict_message}")
+            await websocket.send(json.dumps(dict_message))
 
 def get_config_dict():
     print("Loading config file...")
@@ -52,37 +62,56 @@ def boot(device):
 Devices = []
 DeviceByMac = {}
 DeviceByKey = {}
-    
-async def ping_loop():
+
+PriorityPingDevices = collections.deque()    
+async def ping_loop(websocket):
     global Devices
     
+    lastGlobalPingTime = 0;
     while True:
-        for device in Devices:
-            device.ping()
-        await asyncio.sleep(10)
+        if websocket is not None and websocket.open:
+            while (len(PriorityPingDevices) > 0):
+                priorityPingDevice = PriorityPingDevices.popleft()
+                await priorityPingDevice.ping(websocket)
+            
+            currentTime = time.time()
+            if currentTime - lastGlobalPingTime >= 10:
+                for device in Devices:
+                    await device.ping(websocket)
+                lastGlobalPingTime = currentTime
+            
+            await asyncio.sleep(1)
+        else:
+            await asyncio.sleep(5)
 
 async def main():
     global DeviceByMac
     global DeviceByKey
+    global PriorityPingDevices
     
     config_json = get_config_dict()
     uri = f"wss://{config_json['address']}:{config_json['port']}/?tgt=remote_boot"
     
     for target_key, target in config_json["targets"].items():
         if target["mac"] not in DeviceByMac:
-            newDevice = Device(target["name"], target["mac"], target["ip"])
+            newDevice = Device(target_key, target["name"], target["mac"], target["ip"])
             Devices.append(newDevice)
             DeviceByMac[target["mac"]] = newDevice
         device = DeviceByMac[target["mac"]]
         DeviceByKey[target_key] = device
         
-    asyncio.create_task(ping_loop())
+    ping_loop_task = None
     
     print(f"Connecting to {uri}...")
     try:
         # SSLContext(...) without protocol paramter is deprecated for 3.10 onwards
         async for websocket in websockets.connect(uri, ssl=ssl.SSLContext()):
             try:
+                if ping_loop_task is not None:
+                    ping_loop_task.cancel()
+                    await ping_loop_task
+                ping_loop_task = asyncio.create_task(ping_loop(websocket))
+                
                 config_json = get_config_dict()
                 dict_message = {"client_type": "endpoint", "action": "register", "keys": list(config_json["targets"].keys())}
                 print(f"Sending: {dict_message}")
@@ -107,8 +136,8 @@ async def main():
                                     key = json_dict["key"]
                                     if key in DeviceByKey:
                                         device = DeviceByKey[key]
-                                        dict_message = {"client_type": "endpoint", "action": "ping", "key": key, "ping": device.PingDelay}
-                                        await websocket.send(json.dumps(dict_message))
+                                        if device not in PriorityPingDevices:
+                                            PriorityPingDevices.append(devices)
             except websockets.ConnectionClosed:
                 print(f"Connection closed, retrying...")
                 continue
