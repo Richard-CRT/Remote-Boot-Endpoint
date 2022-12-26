@@ -27,7 +27,7 @@ class Device():
             except TimeoutError:
                 self.PingDelay = None
             
-            dict_message = {"client_type": "endpoint", "action": "ping", "key": self.Key, "ping": self.PingDelay}
+            dict_message = {"client_type": "endpoint", "action": "ping", "key": self.Key, "ping_ms": self.PingDelay}
             print(f"Sending: {dict_message}")
             await websocket.send(json.dumps(dict_message))
 
