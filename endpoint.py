@@ -8,6 +8,7 @@ import collections
 import time
 from ping3 import ping
 
+
 class Device():
     def __init__(self, key, name, mac, ip):
         self.Key = key
@@ -15,26 +16,27 @@ class Device():
         self.Mac = mac
         self.IP = ip
         self.PingDelay = None
-    
+
     def boot(self):
         print(f"Sending magic packet to: {self.Mac}")
         wakeonlan.send_magic_packet(self.Mac)
-    
+
     async def ping(self, websocket):
         if self.IP is not None:
             try:
                 self.PingDelay = ping(self.IP, timeout=0.5) * 1000
             except TimeoutError:
                 self.PingDelay = None
-            
+
             dict_message = {"client_type": "endpoint", "action": "ping", "key": self.Key, "ping_ms": self.PingDelay}
             print(f"Sending: {dict_message}")
             await websocket.send(json.dumps(dict_message))
 
+
 def get_config_dict():
     print("Loading config file...")
     filename = "endpoint_config.json"
-    config_json = {"address": "hostname.com", "port":"1234", "targets": {}}
+    config_json = {"address": "hostname.com", "port": "1234", "targets": {}}
 
     try:
         with open(filename, 'r') as f:
@@ -59,39 +61,43 @@ def boot(device):
     print("-- Running boot procedure --")
     device.boot()
 
+
 Devices = []
 DeviceByMac = {}
 DeviceByKey = {}
 
-PriorityPingDevices = collections.deque()    
+PriorityPingDevices = collections.deque()
+
+
 async def ping_loop(websocket):
     global Devices
-    
-    lastGlobalPingTime = 0;
+
+    lastGlobalPingTime = 0
     while True:
         if websocket is not None and websocket.open:
             while (len(PriorityPingDevices) > 0):
                 priorityPingDevice = PriorityPingDevices.popleft()
                 await priorityPingDevice.ping(websocket)
-            
+
             currentTime = time.time()
             if currentTime - lastGlobalPingTime >= 10:
                 for device in Devices:
                     await device.ping(websocket)
                 lastGlobalPingTime = currentTime
-            
+
             await asyncio.sleep(1)
         else:
             await asyncio.sleep(5)
+
 
 async def main():
     global DeviceByMac
     global DeviceByKey
     global PriorityPingDevices
-    
+
     config_json = get_config_dict()
-    uri = f"wss://{config_json['address']}:{config_json['port']}/?tgt=remote_boot"
-    
+    uri = f"wss://{config_json['address']}:{config_json['port']}/?tgt=remote_boot&client_type=endpoint"
+
     for target_key, target in config_json["targets"].items():
         if target["mac"] not in DeviceByMac:
             newDevice = Device(target_key, target["name"], target["mac"], target["ip"])
@@ -99,9 +105,9 @@ async def main():
             DeviceByMac[target["mac"]] = newDevice
         device = DeviceByMac[target["mac"]]
         DeviceByKey[target_key] = device
-        
+
     ping_loop_task = None
-    
+
     print(f"Connecting to {uri}...")
     try:
         # SSLContext(...) without protocol paramter is deprecated for 3.10 onwards
@@ -114,9 +120,9 @@ async def main():
                     except asyncio.exceptions.CancelledError:
                         pass
                 ping_loop_task = asyncio.create_task(ping_loop(websocket))
-                
+
                 config_json = get_config_dict()
-                dict_message = {"client_type": "endpoint", "action": "register", "keys": list(config_json["targets"].keys())}
+                dict_message = {"action": "register", "keys": list(config_json["targets"].keys())}
                 print(f"Sending: {dict_message}")
                 await websocket.send(json.dumps(dict_message))
                 async for message in websocket:
