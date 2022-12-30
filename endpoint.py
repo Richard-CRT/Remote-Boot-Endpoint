@@ -23,14 +23,15 @@ class Device():
 
     async def ping(self, websocket):
         if self.IP is not None:
-            try:
-                self.PingDelay = ping(self.IP, timeout=0.5) * 1000
-            except TimeoutError:
+            raw_val = ping(self.IP, timeout=0.5)
+            if raw_val is None or raw_val == False:
                 self.PingDelay = None
+            else:
+                self.PingDelay = raw_val * 1000
 
-            dict_message = {"action": "ping", "uuid": self.UUID, "ping_ms": self.PingDelay}
-            print(f"Sending: {dict_message}")
-            await websocket.send(json.dumps(dict_message))
+            json_string = json.dumps({"action": "ping", "uuid": self.UUID, "ping_ms": self.PingDelay})
+            print(f"Sending: {json_string}")
+            await websocket.send(json_string)
 
 
 def get_config_dict():
@@ -122,9 +123,11 @@ async def main():
                 ping_loop_task = asyncio.create_task(ping_loop(websocket))
 
                 config_json = get_config_dict()
-                dict_message = {"action": "register", "uuids": list(config_json["targets"].keys())}
-                print(f"Sending: {dict_message}")
-                await websocket.send(json.dumps(dict_message))
+                
+                json_string = json.dumps({"action": "register", "uuids": list(config_json["targets"].keys())})
+                print(f"Sending: {json_string}")
+                await websocket.send(json_string)
+                
                 async for message in websocket:
                     try:
                         json_dict = json.loads(message)
