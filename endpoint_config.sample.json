@@ -2,12 +2,12 @@
     "address": "hostname.com",
     "port": "1234",
     "targets": {
-        "sample_key_1": {
+        "sample_uid_1": {
 			"name": "Sample Name 1",
 			"mac": "aa.ff.bb.bb.ff.aa"
 			"ip": "192.168.0.10"
         },
-        "sample_key_2": {
+        "sample_uid_2": {
 			"name": "Sample Name 2",
 			"mac": "ff.cc.dd.dd.cc.ff"
 			"ip": null

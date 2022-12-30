@@ -10,8 +10,8 @@ from ping3 import ping
 
 
 class Device():
-    def __init__(self, key, name, mac, ip):
-        self.Key = key
+    def __init__(self, uid, name, mac, ip):
+        self.UID = uid
         self.Name = name
         self.Mac = mac
         self.IP = ip
@@ -28,7 +28,7 @@ class Device():
             except TimeoutError:
                 self.PingDelay = None
 
-            dict_message = {"client_type": "endpoint", "action": "ping", "key": self.Key, "ping_ms": self.PingDelay}
+            dict_message = {"client_type": "endpoint", "action": "ping", "uid": self.UID, "ping_ms": self.PingDelay}
             print(f"Sending: {dict_message}")
             await websocket.send(json.dumps(dict_message))
 
@@ -64,7 +64,7 @@ def boot(device):
 
 Devices = []
 DeviceByMac = {}
-DeviceByKey = {}
+DeviceByUID = {}
 
 PriorityPingDevices = collections.deque()
 
@@ -92,19 +92,19 @@ async def ping_loop(websocket):
 
 async def main():
     global DeviceByMac
-    global DeviceByKey
+    global DeviceByUID
     global PriorityPingDevices
 
     config_json = get_config_dict()
     uri = f"wss://{config_json['address']}:{config_json['port']}/?tgt=remote_boot&client_type=endpoint"
 
-    for target_key, target in config_json["targets"].items():
+    for target_uid, target in config_json["targets"].items():
         if target["mac"] not in DeviceByMac:
-            newDevice = Device(target_key, target["name"], target["mac"], target["ip"])
+            newDevice = Device(target_uid, target["name"], target["mac"], target["ip"])
             Devices.append(newDevice)
             DeviceByMac[target["mac"]] = newDevice
         device = DeviceByMac[target["mac"]]
-        DeviceByKey[target_key] = device
+        DeviceByUID[target_uid] = device
 
     ping_loop_task = None
 
@@ -122,7 +122,7 @@ async def main():
                 ping_loop_task = asyncio.create_task(ping_loop(websocket))
 
                 config_json = get_config_dict()
-                dict_message = {"action": "register", "keys": list(config_json["targets"].keys())}
+                dict_message = {"action": "register", "uids": list(config_json["targets"].uids())}
                 print(f"Sending: {dict_message}")
                 await websocket.send(json.dumps(dict_message))
                 async for message in websocket:
@@ -134,17 +134,17 @@ async def main():
                         print(f"Received: {json_dict}")
                         if "action" in json_dict:
                             action = json_dict["action"]
-                            if action == "boot":
-                                if "key" in json_dict:
-                                    key = json_dict["key"]
-                                    if key in DeviceByKey:
-                                        print(f"Booting key {key}...")
-                                        boot(DeviceByKey[key])
+                            if action == "request_boot":
+                                if "uid" in json_dict:
+                                    uid = json_dict["uid"]
+                                    if uid in DeviceByUID:
+                                        print(f"Booting UID {uid}...")
+                                        boot(DeviceByUID[uid])
                             elif action == "request_ping":
-                                if "key" in json_dict:
-                                    key = json_dict["key"]
-                                    if key in DeviceByKey:
-                                        device = DeviceByKey[key]
+                                if "uid" in json_dict:
+                                    uid = json_dict["uid"]
+                                    if uid in DeviceByUID:
+                                        device = DeviceByUID[uid]
                                         if device not in PriorityPingDevices:
                                             PriorityPingDevices.append(device)
             except websockets.ConnectionClosed:
