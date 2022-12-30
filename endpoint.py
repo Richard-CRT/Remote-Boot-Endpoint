@@ -10,8 +10,8 @@ from ping3 import ping
 
 
 class Device():
-    def __init__(self, uid, name, mac, ip):
-        self.UID = uid
+    def __init__(self, uuid, name, mac, ip):
+        self.UUID = uuid
         self.Name = name
         self.Mac = mac
         self.IP = ip
@@ -28,7 +28,7 @@ class Device():
             except TimeoutError:
                 self.PingDelay = None
 
-            dict_message = {"client_type": "endpoint", "action": "ping", "uid": self.UID, "ping_ms": self.PingDelay}
+            dict_message = {"client_type": "endpoint", "action": "ping", "uuid": self.UUID, "ping_ms": self.PingDelay}
             print(f"Sending: {dict_message}")
             await websocket.send(json.dumps(dict_message))
 
@@ -63,8 +63,8 @@ def boot(device):
 
 
 Devices = []
-DeviceByMac = {}
-DeviceByUID = {}
+Device_by_MAC = {}
+Device_by_UUID = {}
 
 PriorityPingDevices = collections.deque()
 
@@ -91,20 +91,20 @@ async def ping_loop(websocket):
 
 
 async def main():
-    global DeviceByMac
-    global DeviceByUID
+    global Device_by_MAC
+    global Device_by_UUID
     global PriorityPingDevices
 
     config_json = get_config_dict()
     uri = f"wss://{config_json['address']}:{config_json['port']}/?tgt=remote_boot&client_type=endpoint"
 
-    for target_uid, target in config_json["targets"].items():
-        if target["mac"] not in DeviceByMac:
-            newDevice = Device(target_uid, target["name"], target["mac"], target["ip"])
+    for target_uuid, target in config_json["targets"].items():
+        if target["mac"] not in Device_by_MAC:
+            newDevice = Device(target_uuid, target["name"], target["mac"], target["ip"])
             Devices.append(newDevice)
-            DeviceByMac[target["mac"]] = newDevice
-        device = DeviceByMac[target["mac"]]
-        DeviceByUID[target_uid] = device
+            Device_by_MAC[target["mac"]] = newDevice
+        device = Device_by_MAC[target["mac"]]
+        Device_by_UUID[target_uuid] = device
 
     ping_loop_task = None
 
@@ -122,7 +122,7 @@ async def main():
                 ping_loop_task = asyncio.create_task(ping_loop(websocket))
 
                 config_json = get_config_dict()
-                dict_message = {"action": "register", "uids": list(config_json["targets"].uids())}
+                dict_message = {"action": "register", "uuids": list(config_json["targets"].uuids())}
                 print(f"Sending: {dict_message}")
                 await websocket.send(json.dumps(dict_message))
                 async for message in websocket:
@@ -135,16 +135,16 @@ async def main():
                         if "action" in json_dict:
                             action = json_dict["action"]
                             if action == "request_boot":
-                                if "uid" in json_dict:
-                                    uid = json_dict["uid"]
-                                    if uid in DeviceByUID:
-                                        print(f"Booting UID {uid}...")
-                                        boot(DeviceByUID[uid])
+                                if "uuid" in json_dict:
+                                    uuid = json_dict["uuid"]
+                                    if uuid in Device_by_UUID:
+                                        print(f"Booting UUID {uuid}...")
+                                        boot(Device_by_UUID[uuid])
                             elif action == "request_ping":
-                                if "uid" in json_dict:
-                                    uid = json_dict["uid"]
-                                    if uid in DeviceByUID:
-                                        device = DeviceByUID[uid]
+                                if "uuid" in json_dict:
+                                    uuid = json_dict["uuid"]
+                                    if uuid in Device_by_UUID:
+                                        device = Device_by_UUID[uuid]
                                         if device not in PriorityPingDevices:
                                             PriorityPingDevices.append(device)
             except websockets.ConnectionClosed:
