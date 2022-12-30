@@ -6,8 +6,8 @@ import wakeonlan
 import ssl
 import collections
 import time
-from ping3 import ping
-
+import ping3
+ping3.EXCEPTIONS = True
 
 class Device():
     def __init__(self, uuid, name, mac, ip):
@@ -23,11 +23,10 @@ class Device():
 
     async def ping(self, websocket):
         if self.IP is not None:
-            raw_val = ping(self.IP, timeout=0.5)
-            if raw_val is None or raw_val == False:
+            try:
+                self.PingDelay = ping3.ping(self.IP, timeout=0.5) * 1000
+            except ping3.errors.PingError:
                 self.PingDelay = None
-            else:
-                self.PingDelay = raw_val * 1000
 
             json_string = json.dumps({"action": "ping", "uuid": self.UUID, "ping_ms": self.PingDelay})
             print(f"Sending: {json_string}")
