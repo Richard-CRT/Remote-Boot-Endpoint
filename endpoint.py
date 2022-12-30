@@ -122,7 +122,7 @@ async def main():
                 ping_loop_task = asyncio.create_task(ping_loop(websocket))
 
                 config_json = get_config_dict()
-                dict_message = {"action": "register", "uuids": list(config_json["targets"].uuids())}
+                dict_message = {"action": "register", "uuids": list(config_json["targets"].keys())}
                 print(f"Sending: {dict_message}")
                 await websocket.send(json.dumps(dict_message))
                 async for message in websocket:
