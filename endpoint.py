@@ -113,12 +113,6 @@ async def main():
         # SSLContext(...) without protocol paramter is deprecated for 3.10 onwards
         async for websocket in websockets.connect(uri, ssl=ssl.SSLContext()):
             try:
-                if ping_loop_task is not None:
-                    ping_loop_task.cancel()
-                    try:
-                        await ping_loop_task
-                    except asyncio.exceptions.CancelledError:
-                        pass
                 ping_loop_task = asyncio.create_task(ping_loop(websocket))
 
                 config_json = get_config_dict()
@@ -150,12 +144,23 @@ async def main():
                                         if device not in PriorityPingDevices:
                                             PriorityPingDevices.append(device)
             except websockets.ConnectionClosed:
-                print(f"Connection closed, retrying...")
-                continue
+                print(f"Connection closed")
             except Exception as err:
                 print(f"Error {type(err).__name__}")
                 print(err)
-                continue
+                
+            print(f"Cancelling ping loop task...")
+            if ping_loop_task is not None:
+                ping_loop_task.cancel()
+                try:
+                    await ping_loop_task
+                except asyncio.exceptions.CancelledError:
+                    pass
+            print(f"Ping loop task terminated...")
+            
+            print(f"Waiting slow-down period...")
+            await asyncio.sleep(5)
+            print(f"Retrying connection...")
     except Exception as err:
         print(f"Error {type(err).__name__}")
         print(err)
