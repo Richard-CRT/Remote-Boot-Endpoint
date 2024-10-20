@@ -4,12 +4,12 @@
     "targets": {
         "sample_uid_1": {
             "name": "Sample Name 1",
-            "mac": "aa.ff.bb.bb.ff.aa"
+            "mac": "AA-FF-BB-BB-FF-AA"
             "ip": "192.168.0.10"
         },
         "sample_uid_2": {
             "name": "Sample Name 2",
-            "mac": "ff.cc.dd.dd.cc.ff"
+            "mac": "FF-CC-DD-DD-CC-FF"
             "ip": null
         }
     }
