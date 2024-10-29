@@ -1,7 +1,9 @@
 import asyncio
 import json
 import sys
+from websockets.asyncio.client import connect
 import websockets
+import websockets.protocol
 import wakeonlan
 import ssl
 import collections
@@ -62,6 +64,7 @@ def boot(device):
     device.boot()
 
 
+Websocket = None
 Devices = []
 Device_by_MAC = {}
 Device_by_UUID = {}
@@ -69,20 +72,21 @@ Device_by_UUID = {}
 PriorityPingDevices = collections.deque()
 
 
-async def ping_loop(websocket):
+async def ping_loop():
+    global Websocket
     global Devices
 
     lastGlobalPingTime = 0
     while True:
-        if websocket is not None and websocket.open:
-            while (len(PriorityPingDevices) > 0):
+        if Websocket is not None and Websocket.state == websockets.protocol.State.OPEN:
+            while len(PriorityPingDevices) > 0:
                 priorityPingDevice = PriorityPingDevices.popleft()
-                await priorityPingDevice.ping(websocket)
+                await priorityPingDevice.ping(Websocket)
 
             currentTime = time.time()
             if currentTime - lastGlobalPingTime >= 10:
                 for device in Devices:
-                    await device.ping(websocket)
+                    await device.ping(Websocket)
                 lastGlobalPingTime = currentTime
 
             await asyncio.sleep(1)
@@ -91,6 +95,7 @@ async def ping_loop(websocket):
 
 
 async def main():
+    global Websocket
     global Device_by_MAC
     global Device_by_UUID
     global PriorityPingDevices
@@ -106,17 +111,14 @@ async def main():
         device = Device_by_MAC[target["mac"]]
         Device_by_UUID[target_uuid] = device
 
-    ping_loop_task = None
+    ping_loop_task = asyncio.create_task(ping_loop())
 
     print(f"Connecting to {uri}...")
     try:
         # SSLContext(...) without protocol paramter is deprecated for 3.10 onwards
-        async for websocket in websockets.connect(uri, ssl=ssl.SSLContext()):
+        async for websocket in connect(uri, ssl=True):
+            Websocket = websocket
             try:
-                ping_loop_task = asyncio.create_task(ping_loop(websocket))
-
-                config_json = get_config_dict()
-                
                 json_string = json.dumps({"action": "register", "uuids": list(config_json["targets"].keys())})
                 print(f"Sending: {json_string}")
                 await websocket.send(json_string)
@@ -148,15 +150,6 @@ async def main():
             except Exception as err:
                 print(f"Error {type(err).__name__}")
                 print(err)
-                
-            print(f"Cancelling ping loop task...")
-            if ping_loop_task is not None:
-                ping_loop_task.cancel()
-                try:
-                    await ping_loop_task
-                except asyncio.exceptions.CancelledError:
-                    pass
-            print(f"Ping loop task terminated...")
             
             print(f"Waiting slow-down period...")
             await asyncio.sleep(5)
