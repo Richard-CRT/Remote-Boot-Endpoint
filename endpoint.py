@@ -76,23 +76,39 @@ async def ping_loop():
     global Websocket
     global Devices
 
+    # Wait for initial 2s to allow websocket to come up
+    await asyncio.sleep(2)
+
+    suspectedNetworkError = False
     lastGlobalPingTime = 0
     while True:
-        if Websocket is not None and Websocket.state == websockets.protocol.State.OPEN:
-            while len(PriorityPingDevices) > 0:
-                priorityPingDevice = PriorityPingDevices.popleft()
-                await priorityPingDevice.ping(Websocket)
+        if not suspectedNetworkError:
+            if Websocket is not None and Websocket.state == websockets.protocol.State.OPEN:
+                try:
+                    while len(PriorityPingDevices) > 0:
+                        priorityPingDevice = PriorityPingDevices.popleft()
+                        await priorityPingDevice.ping(Websocket)
 
-            currentTime = time.time()
-            if currentTime - lastGlobalPingTime >= 10:
-                for device in Devices:
-                    await device.ping(Websocket)
-                lastGlobalPingTime = currentTime
+                    currentTime = time.time()
+                    if currentTime - lastGlobalPingTime >= 10:
+                        lastGlobalPingTime = currentTime
+                        for device in Devices:
+                            await device.ping(Websocket)
+                # Have to handle these errors for some reason otherwise the ping attempt hangs forever if network unreachable
+                except OSError as err:
+                    print(f"Ping Loop: OSError")
+                    print(err)
+                    suspectedNetworkError = True
+                except Exception as err:
+                    print(f"Ping Loop: Error {type(err).__name__}")
+                    print(err)
 
-            await asyncio.sleep(1)
+                await asyncio.sleep(1)
+            else:
+                await asyncio.sleep(10)
         else:
-            await asyncio.sleep(5)
-
+            suspectedNetworkError = False
+            await asyncio.sleep(30)
 
 async def main():
     global Websocket
@@ -113,16 +129,15 @@ async def main():
 
     ping_loop_task = asyncio.create_task(ping_loop())
 
-    print(f"Connecting to {uri}...")
+    print(f"Websockets Loop: Connecting to {uri}...")
     try:
-        # SSLContext(...) without protocol paramter is deprecated for 3.10 onwards
         async for websocket in connect(uri, ssl=True):
             Websocket = websocket
             try:
                 json_string = json.dumps({"action": "register", "uuids": list(config_json["targets"].keys())})
                 print(f"Sending: {json_string}")
                 await websocket.send(json_string)
-                
+
                 async for message in websocket:
                     try:
                         json_dict = json.loads(message)
@@ -146,16 +161,16 @@ async def main():
                                         if device not in PriorityPingDevices:
                                             PriorityPingDevices.append(device)
             except websockets.ConnectionClosed:
-                print(f"Connection closed")
+                print(f"Websockets Loop: Connection closed")
             except Exception as err:
-                print(f"Error {type(err).__name__}")
+                print(f"Websockets Loop: Error {type(err).__name__}")
                 print(err)
-            
-            print(f"Waiting slow-down period...")
+
+            print(f"Websockets Loop: Waiting slow-down period...")
             await asyncio.sleep(5)
-            print(f"Retrying connection...")
+            print(f"Websockets Loop: Retrying connection...")
     except Exception as err:
-        print(f"Error {type(err).__name__}")
+        print(f"Websockets Loop: Error {type(err).__name__}")
         print(err)
 
 
